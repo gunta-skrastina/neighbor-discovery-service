@@ -84,6 +84,56 @@ void sendBroadcast(std::string & broadcastIp)
 	close(sockfd);
 }
 
+void sendUdpPacket(const std::string &ip)
+{
+	int udpSocket = socket(AF_INET, SOCK_DGRAM, 0);
+	if (udpSocket < 0) {
+		std::cerr << "Failed to create UDP socket" << std::endl;
+		return;
+	}
+
+	struct sockaddr_in serverAddr;
+	memset(&serverAddr, 0, sizeof(serverAddr));
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_port = htons(PORT);
+	serverAddr.sin_addr.s_addr = inet_addr(ip.c_str());
+
+	const char *message = "UDP Discovery Packet";
+	if (sendto(udpSocket, message, strlen(message), 0, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+		std::cerr << "Failed to send UDP packet" << std::endl;
+		close(udpSocket);
+		return;
+	}
+	close(udpSocket);
+}
+
+std::string getMacAddress(std::string ip)
+{
+	std::string macAddress;
+	std::string command = "arp -a";
+	FILE *arpPipe = popen(command.c_str(), "r");
+	if (!arpPipe) {
+		std::cerr << "Failed to execute arp -a command" << std::endl;
+		return "";
+	}
+
+	char buffer[512];
+	std::string arpOutput;
+	while (fgets(buffer, sizeof(buffer), arpPipe) != nullptr) {
+		arpOutput += buffer;
+	}
+	pclose(arpPipe);
+	size_t pos = arpOutput.find(ip);
+	if (pos != std::string::npos) {
+		pos += ip.size() + 6;
+		macAddress = arpOutput.substr(pos, 17);
+	} else {
+		sendUdpPacket(ip);
+		return getMacAddress(ip);
+	}
+	return macAddress;
+}
+
 void receiveMessages(int sockfd, CurrentDevice ipAndSubnet, std::map<std::string, Neighbor>& activeNeighbors) {
 	char buffer[BUFFER];
 	int bytesReceived;
@@ -108,8 +158,15 @@ void receiveMessages(int sockfd, CurrentDevice ipAndSubnet, std::map<std::string
 		sendto(sockfd, serializedData.c_str(), serializedData.size(), 0, (const struct sockaddr *) & cliAddr, len);
 	} else {
 		std::string currentIp = inet_ntoa(cliAddr.sin_addr);
-		if (currentIp != ipAndSubnet.ipAddress)
-			std::cout << "Received from " << currentIp << std::endl;
+		if (currentIp != ipAndSubnet.ipAddress) {
+			auto it = activeNeighbors.find(currentIp);
+			if (it == activeNeighbors.end()) {
+				std::string macAddress = getMacAddress(currentIp);
+				activeNeighbors.emplace(currentIp, Neighbor(currentIp, macAddress, std::time(nullptr)));
+			} else {
+				it->second.setTime(std::time(nullptr));
+			}
+		}
 	}
 }
 
@@ -140,7 +197,14 @@ int main()
 	while (true) {
 		sendBroadcast(ipAndSubnet.broadcastAddress);
 		receiveMessages(sockfd, ipAndSubnet, activeNeighbors);
-		std::this_thread::sleep_for(std::chrono::seconds(5));
+		auto currentTime = std::time(nullptr);
+		for (auto it = activeNeighbors.begin(); it != activeNeighbors.end();) {
+			if (currentTime - it->second.getTime() > 30) {
+				it = activeNeighbors.erase(it);
+			} else
+			++it;
+		}
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 	return 0;
 }
