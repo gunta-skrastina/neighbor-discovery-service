@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <cstring>
 #include <unistd.h>
+#include <thread>
 
 void sendBroadcast()
 {
@@ -61,13 +62,12 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 
-	sendBroadcast();
-
 	socklen_t len;
 	int bytesReceived;
 
 	len = sizeof(cliAddr);
 	while (true) {
+		sendBroadcast();
 		bytesReceived = recvfrom(sockfd, (char *) buffer, sizeof(buffer), MSG_WAITALL, (struct sockaddr *) &cliAddr, &len);
 		buffer[bytesReceived] = '\0';
 		if (strcmp(buffer, "Get Neighbors") == 0) {
@@ -81,6 +81,7 @@ int main()
 			std::string currentIp = inet_ntoa(cliAddr.sin_addr);
 			std::cout << "Received from " << currentIp << std::endl;
 		}
+		std::this_thread::sleep_for(std::chrono::seconds(10));
 	}
 	return 0;
 }
