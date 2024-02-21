@@ -2,7 +2,7 @@
 
 CC = g++
 
-CFLAGS = -Wall -Wextra -Werror -std=c++17 -lpthread
+CFLAGS = -Wall -Wextra -Werror -std=c++17
 
 SERVICE = service
 CLI = cli

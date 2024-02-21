@@ -5,7 +5,6 @@
 #include <netinet/in.h>
 #include <cstring>
 #include <unistd.h>
-#include <thread>
 
 struct CurrentDevice
 {
@@ -14,14 +13,13 @@ struct CurrentDevice
 	std::string broadcastAddress;
 };
 
-CurrentDevice getIpAddressAndSubnet()
+void getIpAddressAndSubnet(CurrentDevice &ipAndSubnet, std::map<std::string, Neighbor> &activeNeighbors)
 {
-	CurrentDevice ipAndSubnet;
 	std::string command = "ifconfig | grep 'inet ' | grep -v '127.0.0.1'";
 	FILE *ifconfig_pipe = popen(command.c_str(), "r");
 	if (!ifconfig_pipe) {
 		std::cerr << "Failed to execute ifconfig command" << std::endl;
-		return ipAndSubnet;
+		return ;
 	}
 
 	char buffer[256];
@@ -35,13 +33,21 @@ CurrentDevice getIpAddressAndSubnet()
 	if (pos != std::string::npos) {
 		pos += 5;
 		size_t end_pos = ifconfig_output.find(' ', pos);
-		ipAndSubnet.ipAddress = ifconfig_output.substr(pos, end_pos - pos);
+		std::string ipAddress = ifconfig_output.substr(pos, end_pos - pos);
+		if (ipAddress != ipAndSubnet.ipAddress) {
+			ipAndSubnet.ipAddress = ipAddress;
+			activeNeighbors.clear();
+		}
 
 		pos = ifconfig_output.find("netmask ", end_pos);
 		if (pos != std::string::npos) {
 			pos += 8;
 			end_pos = ifconfig_output.find(' ', pos);
-			ipAndSubnet.subnetMask = ifconfig_output.substr(pos, end_pos - pos);
+			std::string subnetMask = ifconfig_output.substr(pos, end_pos - pos);
+			if (subnetMask != ipAndSubnet.subnetMask) {
+				ipAndSubnet.subnetMask = subnetMask;
+				activeNeighbors.clear();
+			}
 
 			pos = ifconfig_output.find("broadcast ", end_pos);
 			if (pos != std::string::npos) {
@@ -51,7 +57,6 @@ CurrentDevice getIpAddressAndSubnet()
 			}
 		}
 	}
-	return ipAndSubnet;
 }
 
 void sendBroadcast(std::string & broadcastIp)
@@ -196,8 +201,9 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 
-	CurrentDevice ipAndSubnet = getIpAddressAndSubnet();
+	CurrentDevice ipAndSubnet;
 	while (true) {
+		getIpAddressAndSubnet(ipAndSubnet, activeNeighbors);
 		sendBroadcast(ipAndSubnet.broadcastAddress);
 		receiveMessages(sockfd, ipAndSubnet, activeNeighbors);
 		auto currentTime = std::time(nullptr);
@@ -207,7 +213,6 @@ int main()
 			} else
 			++it;
 		}
-		// std::this_thread::sleep_for(std::chrono::microseconds(100));
 	}
 	return 0;
 }
