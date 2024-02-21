@@ -7,7 +7,54 @@
 #include <unistd.h>
 #include <thread>
 
-void sendBroadcast()
+struct CurrentDevice
+{
+	std::string ipAddress;
+	std::string subnetMask;
+	std::string broadcastAddress;
+};
+
+CurrentDevice getIpAddressAndSubnet()
+{
+	CurrentDevice ipAndSubnet;
+	std::string command = "ifconfig | grep 'inet ' | grep -v '127.0.0.1'";
+	FILE *ifconfig_pipe = popen(command.c_str(), "r");
+	if (!ifconfig_pipe) {
+		std::cerr << "Failed to execute ifconfig command" << std::endl;
+		return ipAndSubnet;
+	}
+
+	char buffer[256];
+	std::string ifconfig_output;
+	while (fgets(buffer, sizeof(buffer), ifconfig_pipe) != nullptr) {
+		ifconfig_output += buffer;
+	}
+	pclose(ifconfig_pipe);
+
+	size_t pos = ifconfig_output.find("inet ");
+	if (pos != std::string::npos) {
+		pos += 5;
+		size_t end_pos = ifconfig_output.find(' ', pos);
+		ipAndSubnet.ipAddress = ifconfig_output.substr(pos, end_pos - pos);
+
+		pos = ifconfig_output.find("netmask ", end_pos);
+		if (pos != std::string::npos) {
+			pos += 8;
+			end_pos = ifconfig_output.find(' ', pos);
+			ipAndSubnet.subnetMask = ifconfig_output.substr(pos, end_pos - pos);
+
+			pos = ifconfig_output.find("broadcast ", end_pos);
+			if (pos != std::string::npos) {
+				pos += 10;
+				end_pos = ifconfig_output.find(' ', pos);
+				ipAndSubnet.broadcastAddress = ifconfig_output.substr(pos, end_pos - pos);
+			}
+		}
+	}
+	return ipAndSubnet;
+}
+
+void sendBroadcast(std::string & broadcastIp)
 {
 	int sockfd;
 	const char *hello = "Hello";
@@ -22,7 +69,7 @@ void sendBroadcast()
 
 	serverAddr.sin_family = AF_INET;
 	serverAddr.sin_port = htons(PORT);
-	serverAddr.sin_addr.s_addr = INADDR_BROADCAST;
+	serverAddr.sin_addr.s_addr = inet_addr(broadcastIp.c_str());
 
 	int broadcastEnabled = 1;
 	if (setsockopt(sockfd, SOL_SOCKET, SO_BROADCAST, &broadcastEnabled, sizeof(broadcastEnabled)) < 0) {
@@ -66,10 +113,17 @@ int main()
 	int bytesReceived;
 
 	len = sizeof(cliAddr);
+
+	CurrentDevice ipAndSubnet = getIpAddressAndSubnet();
 	while (true) {
-		sendBroadcast();
+		sendBroadcast(ipAndSubnet.broadcastAddress);
 		bytesReceived = recvfrom(sockfd, (char *) buffer, sizeof(buffer), MSG_WAITALL, (struct sockaddr *) &cliAddr, &len);
 		buffer[bytesReceived] = '\0';
+		if (bytesReceived < 0) {
+			std::cerr << "Receiving message failed" << std::endl;
+			close(sockfd);
+			return 1;
+		}
 		if (strcmp(buffer, "Get Neighbors") == 0) {
 			std::string serializedData;
 			for (const auto & neighbor : activeNeighbors) {
@@ -79,7 +133,8 @@ int main()
 			sendto(sockfd, serializedData.c_str(), serializedData.size(), 0, (const struct sockaddr *) & cliAddr, len);
 		} else {
 			std::string currentIp = inet_ntoa(cliAddr.sin_addr);
-			std::cout << "Received from " << currentIp << std::endl;
+			if (currentIp != ipAndSubnet.ipAddress)
+				std::cout << "Received from " << currentIp << std::endl;
 		}
 		std::this_thread::sleep_for(std::chrono::seconds(10));
 	}
