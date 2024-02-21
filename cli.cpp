@@ -26,13 +26,32 @@ void getActiveNeighbors(std::vector<Neighbor> &neighbors)
 	int bytesReceived;
 	socklen_t len;
 
-	sendto(sockfd, (const char *)hello, strlen(hello), 0, (const struct sockaddr *) & serverAddr, sizeof(serverAddr));	
+	struct timeval timeout;
+	timeout.tv_sec = 5;
+	timeout.tv_usec = 0;
+
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout)) < 0) {
+		std::cerr << "Error setting socket receive timeout" << std::endl;
+        close(sockfd);
+        exit(EXIT_FAILURE);
+	}
+
+	if (sendto(sockfd, (const char *)hello, strlen(hello), 0, (const struct sockaddr *) & serverAddr, sizeof(serverAddr)) < 0) {
+		std::cerr << "Receiving message failed" << std::endl;
+		close(sockfd);
+		exit(EXIT_FAILURE);
+	}
+
 	bytesReceived = recvfrom(sockfd, (char *)buffer, sizeof(buffer), MSG_WAITALL, (struct sockaddr *) &serverAddr, &len);
 	buffer[bytesReceived] = '\0';
 	if (bytesReceived < 0) {
-		std::cerr << "Receiving message failed" << std::endl;
+		if (errno == EWOULDBLOCK || errno == EAGAIN) {
+			std::cerr << "Timeout: Service is not running or available" << std::endl;
+		} else {
+			std::cerr << "Receiving message failed" << std::endl;
+		}
 		close(sockfd);
-		return ;
+		exit(EXIT_FAILURE);
 	}
 
 	std::string receivedData(buffer, bytesReceived);
