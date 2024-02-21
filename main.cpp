@@ -62,6 +62,7 @@ void sendBroadcast(std::string & broadcastIp)
 
 	if((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
 		std::cerr << "Socket Creation Failed" << std::endl;
+		close(sockfd);
 		exit(EXIT_FAILURE);
 	}
 
@@ -179,6 +180,7 @@ int main()
 
 	if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
 		std::cerr << "Socket Creation Failed" << std::endl;
+		close(sockfd);
 		exit(EXIT_FAILURE);
 	}
 
@@ -190,6 +192,7 @@ int main()
 
 	if (bind(sockfd, (const struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
 		std::cerr << "Bind Failed" << std::endl;
+		close(sockfd);
 		exit(EXIT_FAILURE);
 	}
 

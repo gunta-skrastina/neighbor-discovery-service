@@ -13,6 +13,7 @@ void getActiveNeighbors(std::vector<Neighbor> &neighbors)
 
 	if((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
 		std::cerr << "Socket Creation Failed" << std::endl;
+		close(sockfd);
 		exit(EXIT_FAILURE);
 	}
 
@@ -28,6 +29,11 @@ void getActiveNeighbors(std::vector<Neighbor> &neighbors)
 	sendto(sockfd, (const char *)hello, strlen(hello), 0, (const struct sockaddr *) & serverAddr, sizeof(serverAddr));	
 	bytesReceived = recvfrom(sockfd, (char *)buffer, sizeof(buffer), MSG_WAITALL, (struct sockaddr *) &serverAddr, &len);
 	buffer[bytesReceived] = '\0';
+	if (bytesReceived < 0) {
+		std::cerr << "Receiving message failed" << std::endl;
+		close(sockfd);
+		return ;
+	}
 
 	std::string receivedData(buffer, bytesReceived);
 	std::istringstream iss(receivedData);
