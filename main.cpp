@@ -178,6 +178,11 @@ void receiveMessages(int sockfd, CurrentDevice ipAndSubnet, std::map<std::string
 
 int main()
 {
+	if (system("command -v ifconfig >/dev/null 2>&1") != 0) {
+		std::cerr << "Error: net-tools package is not installed\nUse: 'sudo apt-get install net-tools'" << std::endl;
+		return 1;
+	}
+
 	std::map<std::string, Neighbor> activeNeighbors;
 
 	int sockfd;
